@@ -3,13 +3,13 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import json
-from io import BytesIO
 import base64
+from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
     page_title="Sistema PLANAT 2026 - IPEM/RJ",
-    page_icon="📋",
+    page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,248 +33,534 @@ st.markdown("""
         border-bottom: 2px solid #003366;
         margin-bottom: 1rem;
     }
-    .status-ok { color: green; font-weight: bold; }
-    .status-atencao { color: orange; font-weight: bold; }
-    .status-critico { color: red; font-weight: bold; }
+    .card {
+        background-color: #f9f9f9;
+        padding: 1rem;
+        border-radius: 5px;
+        border-left: 5px solid #003366;
+        margin-bottom: 1rem;
+    }
+    .progress-text {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #003366;
+    }
+    .status-concluido {
+        color: green;
+        font-weight: bold;
+    }
+    .status-pendente {
+        color: orange;
+        font-weight: bold;
+    }
+    .footer {
+        text-align: center;
+        padding: 1rem;
+        color: gray;
+        font-size: 0.8rem;
+    }
     .stButton > button {
         background-color: #003366;
         color: white;
         font-weight: bold;
     }
-    .stButton > button:hover {
-        background-color: #004488;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Título principal
-st.markdown('<p class="main-header">📋 SISTEMA DE MONITORAMENTO DO PLANAT 2026</p>', unsafe_allow_html=True)
+# Título
+st.markdown('<p class="main-header">✅ SISTEMA DE MONITORAMENTO DO PLANAT 2026</p>', unsafe_allow_html=True)
 st.markdown('<p style="text-align: center; font-size: 1.2rem;">Instituto de Pesos e Medidas do Estado do Rio de Janeiro - IPEM/RJ</p>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; font-size: 1rem;">Auditoria Interna - AUDIT</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 # Inicialização do estado da sessão
-if 'checklists_data' not in st.session_state:
-    st.session_state.checklists_data = {}
-if 'itens_status' not in st.session_state:
-    st.session_state.itens_status = {
-        1: "OK", 2: "OK", 3: "OK", 4: "Atenção", 5: "OK", 6: "OK", 7: "OK",
-        8: "Em andamento", 9: "OK", 10: "OK", 11: "Não iniciado", 12: "Não iniciado",
-        13: "OK", 14: "OK", 15: "Atenção", 16: "OK", 17: "Crítico", 18: "Em andamento"
-    }
+if 'checklists' not in st.session_state:
+    st.session_state.checklists = {}
 
 # Sidebar
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/RJ-01.png/200px-RJ-01.png", width=100)
-    st.markdown("## 🗓️ Controle")
+    st.markdown("## 📅 Controle Mensal")
     
     meses_pt = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     
     mes_atual = datetime.now().month
-    mes_selecionado = st.selectbox("Mês", range(1, 13), 
-                                   format_func=lambda x: meses_pt[x-1], 
-                                   index=mes_atual-1)
-    ano_selecionado = 2026
+    ano_atual = 2026
     
-    st.markdown("---")
-    
-    # Menu de navegação
-    opcao = st.radio(
-        "Menu",
-        ["🏠 Dashboard", "📝 Checklists", "📊 Visualizar", "📈 Relatórios", "📄 Exportar"]
+    mes_selecionado = st.selectbox(
+        "Selecione o mês",
+        range(1, 13),
+        format_func=lambda x: f"{meses_pt[x-1]}/{ano_atual}",
+        index=mes_atual-1
     )
     
     st.markdown("---")
-    st.markdown("👥 **Milana & José**")
-    st.markdown("Auditoria Interna")
-
-# Dados dos itens
-itens_data = {
-    "Item": list(range(1, 19)),
-    "Descrição": [
-        "Atos de Gestão",
-        "Gestão do Planejamento Orçamentário",
-        "Gestão Orçamentária",
-        "Gestão Financeira",
-        "Gestão Contábil-Patrimonial",
-        "Gestão Previdenciária",
-        "Gestão da Descentralização",
-        "Bens Móveis e Almoxarifado",
-        "Tomada de Contas",
-        "Prestação de Contas de Adiantamento",
-        "PLANAT 2027",
-        "RANAT 2026",
-        "Assessoramento ao Órgão",
-        "Demandas TCE/CGE",
-        "Elaboração de Normativos",
-        "Demandas Extraordinárias",
-        "SIAUDI",
-        "Temas AGE (IN 55/2025)"
-    ],
-    "Status": [
-        "✅ OK", "✅ OK", "✅ OK", "⚠️ Atenção", "✅ OK", "✅ OK", "✅ OK",
-        "🔄 Em andamento", "✅ OK", "✅ OK", "⏳ Pendente", "⏳ Pendente",
-        "✅ OK", "✅ OK", "⚠️ Atenção", "✅ OK", "❌ Crítico", "🔄 Em andamento"
-    ],
-    "Responsável": [
-        "Milana", "José", "José", "José", "José", "José", "Milana",
-        "José", "Milana", "Milana", "Equipe", "Equipe", "Equipe",
-        "Equipe", "Milana", "Equipe", "José", "Milana"
-    ]
-}
-df = pd.DataFrame(itens_data)
-
-# Função para criar link de download CSV
-def get_csv_download_link(df, filename):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 Download CSV</a>'
-    return href
-
-# DASHBOARD
-if opcao == "🏠 Dashboard":
-    st.markdown('<p class="sub-header">🏠 DASHBOARD</p>', unsafe_allow_html=True)
+    st.markdown("### 👥 Equipe")
+    st.markdown("**Milana Aghara Conde Soares Leite**")
+    st.markdown("**José Francisco Chao Cabanas**")
     
-    # Métricas
-    col1, col2, col3, col4 = st.columns(4)
+    st.markdown("---")
+    if st.button("🔄 Nova Sessão", use_container_width=True):
+        st.session_state.checklists = {}
+        st.rerun()
+
+# Dicionário com todos os itens do PLANAT
+itens_planat = {
+    1: {
+        "descricao": "Atos de Gestão",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Verificar Cadastro de Responsáveis",
+            "Monitorar recomendações TCE/CGE",
+            "Acompanhar Concurso Público",
+            "Avaliar Programa de Integridade",
+            "Verificar documentação arquivada"
+        ]
+    },
+    2: {
+        "descricao": "Gestão do Planejamento Orçamentário",
+        "responsavel": "José",
+        "tarefas": [
+            "Analisar PPA 2024-2027",
+            "Verificar LOA 2026",
+            "Acompanhar metas do planejamento"
+        ]
+    },
+    3: {
+        "descricao": "Gestão Orçamentária",
+        "responsavel": "José",
+        "tarefas": [
+            "Conferir receita realizada x prevista",
+            "Analisar despesa executada x fixada",
+            "Verificar execução de DEA",
+            "Analisar restos a pagar",
+            "Acompanhar alterações orçamentárias"
+        ]
+    },
+    4: {
+        "descricao": "Gestão Financeira",
+        "responsavel": "José",
+        "tarefas": [
+            "Verificar integração SIAFERIO",
+            "Realizar conciliações bancárias",
+            "Analisar saldos de caixa",
+            "Verificar transferências financeiras"
+        ]
+    },
+    5: {
+        "descricao": "Gestão Contábil-Patrimonial",
+        "responsavel": "José",
+        "tarefas": [
+            "Analisar restos a pagar",
+            "Verificar dívida ativa",
+            "Acompanhar registros de irregularidades",
+            "Conferir bens móveis e imóveis"
+        ]
+    },
+    6: {
+        "descricao": "Gestão Previdenciária",
+        "responsavel": "José",
+        "tarefas": [
+            "Verificar pagamento de GPS",
+            "Conferir GFIP",
+            "Analisar contribuição patronal"
+        ]
+    },
+    7: {
+        "descricao": "Gestão da Descentralização",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Analisar convênios vigentes",
+            "Verificar prestações de contas",
+            "Emitir relatórios de auditoria"
+        ]
+    },
+    8: {
+        "descricao": "Bens Móveis e Almoxarifado",
+        "responsavel": "José",
+        "tarefas": [
+            "Atualizar inventário",
+            "Verificar termos de responsabilidade",
+            "Conferir estoque do almoxarifado",
+            "Identificar bens inservíveis"
+        ]
+    },
+    9: {
+        "descricao": "Tomada de Contas",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Identificar processos instaurados",
+            "Emitir relatórios de auditoria",
+            "Encaminhar ao TCE/CGE"
+        ]
+    },
+    10: {
+        "descricao": "Prestação de Contas de Adiantamento",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Receber prestações de contas",
+            "Analisar documentos fiscais",
+            "Verificar devolução de saldos",
+            "Emitir relatórios"
+        ]
+    },
+    11: {
+        "descricao": "PLANAT 2027",
+        "responsavel": "Equipe",
+        "tarefas": [
+            "Iniciar elaboração",
+            "Elaborar minuta",
+            "Realizar revisão interna",
+            "Obter aprovação",
+            "Enviar à CGE"
+        ]
+    },
+    12: {
+        "descricao": "RANAT 2026",
+        "responsavel": "Equipe",
+        "tarefas": [
+            "Consolidar relatórios mensais",
+            "Elaborar minuta",
+            "Revisar documento",
+            "Obter aprovação",
+            "Enviar à CGE"
+        ]
+    },
+    13: {
+        "descricao": "Assessoramento ao Órgão",
+        "responsavel": "Equipe",
+        "tarefas": [
+            "Atender demandas da Presidência",
+            "Orientar setores",
+            "Emitir notas técnicas"
+        ]
+    },
+    14: {
+        "descricao": "Demandas TCE/CGE",
+        "responsavel": "Equipe",
+        "tarefas": [
+            "Registrar demandas recebidas",
+            "Responder dentro do prazo",
+            "Arquivar documentação"
+        ]
+    },
+    15: {
+        "descricao": "Elaboração de Normativos",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Elaborar checklists",
+            "Criar manuais",
+            "Atualizar instruções normativas"
+        ]
+    },
+    16: {
+        "descricao": "Demandas Extraordinárias",
+        "responsavel": "Equipe",
+        "tarefas": [
+            "Registrar demandas",
+            "Emitir notas técnicas",
+            "Acompanhar prazos"
+        ]
+    },
+    17: {
+        "descricao": "SIAUDI",
+        "responsavel": "José",
+        "tarefas": [
+            "Registrar recomendações",
+            "Anexar evidências",
+            "Atualizar status",
+            "Monitorar prazos"
+        ]
+    },
+    18: {
+        "descricao": "Temas AGE (IN 55/2025)",
+        "responsavel": "Milana",
+        "tarefas": [
+            "Avaliar contas de obras",
+            "Monitorar TAG de pessoal",
+            "Acompanhar RJ Digital"
+        ]
+    }
+}
+
+# Função para criar chave do mês
+def get_chave_mes(mes, ano):
+    return f"{ano}-{mes:02d}"
+
+chave_mes = get_chave_mes(mes_selecionado, ano_atual)
+
+# Inicializar checklist do mês se não existir
+if chave_mes not in st.session_state.checklists:
+    st.session_state.checklists[chave_mes] = {}
+    for item_num, item_data in itens_planat.items():
+        st.session_state.checklists[chave_mes][item_num] = {
+            "tarefas": {tarefa: False for tarefa in item_data["tarefas"]},
+            "observacoes": "",
+            "concluido": False
+        }
+
+# Função para calcular progresso
+def calcular_progresso(mes):
+    total_tarefas = 0
+    tarefas_concluidas = 0
+    
+    for item_num in itens_planat.keys():
+        if item_num in st.session_state.checklists[mes]:
+            for concluida in st.session_state.checklists[mes][item_num]["tarefas"].values():
+                total_tarefas += 1
+                if concluida:
+                    tarefas_concluidas += 1
+    
+    return total_tarefas, tarefas_concluidas
+
+# Função para gerar relatório do mês
+def gerar_relatorio_mes(mes):
+    relatorio = []
+    relatorio.append(f"RELATÓRIO DE MONITORAMENTO - {meses_pt[mes_selecionado-1]}/{ano_atual}")
+    relatorio.append("=" * 60)
+    relatorio.append(f"Data de emissão: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    relatorio.append("")
+    
+    total_tarefas, tarefas_concluidas = calcular_progresso(mes)
+    percentual = (tarefas_concluidas / total_tarefas * 100) if total_tarefas > 0 else 0
+    
+    relatorio.append(f"PROGRESSO GERAL: {tarefas_concluidas}/{total_tarefas} tarefas ({percentual:.1f}%)")
+    relatorio.append("")
+    
+    for item_num, item_data in itens_planat.items():
+        if item_num in st.session_state.checklists[mes]:
+            item_status = st.session_state.checklists[mes][item_num]
+            tarefas_item = item_status["tarefas"]
+            concluidas_item = sum(tarefas_item.values())
+            total_item = len(tarefas_item)
+            
+            relatorio.append(f"{item_num}. {item_data['descricao']} - Responsável: {item_data['responsavel']}")
+            relatorio.append(f"   Progresso: {concluidas_item}/{total_item} tarefas")
+            
+            for tarefa, concluida in tarefas_item.items():
+                status = "✅" if concluida else "⬜"
+                relatorio.append(f"   {status} {tarefa}")
+            
+            if item_status["observacoes"]:
+                relatorio.append(f"   Observações: {item_status['observacoes']}")
+            
+            relatorio.append("")
+    
+    relatorio.append("=" * 60)
+    relatorio.append("Assinaturas:")
+    relatorio.append("")
+    relatorio.append("_________________________          _________________________")
+    relatorio.append("Milana Aghara Conde Soares Leite    José Francisco Chao Cabanas")
+    relatorio.append("Auditora Interna                     Auditor Interno")
+    
+    return "\n".join(relatorio)
+
+# Layout principal com abas
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 PROGRESSO GERAL",
+    "✅ CHECKLISTS",
+    "📋 RESUMO DO MÊS",
+    "📄 RELATÓRIO",
+    "📤 EXPORTAR"
+])
+
+# ABA 1: PROGRESSO GERAL
+with tab1:
+    st.markdown('<p class="sub-header">📊 PROGRESSO DO MÊS</p>', unsafe_allow_html=True)
+    
+    total_tarefas, tarefas_concluidas = calcular_progresso(chave_mes)
+    percentual = (tarefas_concluidas / total_tarefas * 100) if total_tarefas > 0 else 0
+    
+    # Métricas principais
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Total de Itens", "18")
+        st.metric("Total de Tarefas", total_tarefas)
     with col2:
-        ok_count = len([s for s in df["Status"] if "✅" in s])
-        st.metric("Itens OK", ok_count, f"{ok_count*100/18:.0f}%")
+        st.metric("Tarefas Concluídas", tarefas_concluidas)
     with col3:
-        atencao = len([s for s in df["Status"] if "⚠️" in s or "🔄" in s])
-        st.metric("Em Atenção", atencao)
-    with col4:
-        critico = len([s for s in df["Status"] if "❌" in s])
-        st.metric("Críticos", critico)
+        st.metric("Progresso", f"{percentual:.1f}%")
+    
+    # Barra de progresso
+    st.progress(percentual / 100, text=f"Progresso geral: {percentual:.1f}%")
     
     st.markdown("---")
     
-    # Gráfico
-    status_counts = df["Status"].str.extract(r"([✅⚠️❌🔄⏳])")[0].value_counts()
-    fig = px.pie(values=status_counts.values, names=status_counts.index,
-                 title="Distribuição por Status")
-    st.plotly_chart(fig, use_container_width=True)
+    # Progresso por item
+    st.markdown("### 📈 Progresso por Item")
     
-    # Tabela
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    progresso_data = []
+    for item_num, item_data in itens_planat.items():
+        if item_num in st.session_state.checklists[chave_mes]:
+            tarefas_item = st.session_state.checklists[chave_mes][item_num]["tarefas"]
+            concluidas = sum(tarefas_item.values())
+            total = len(tarefas_item)
+            percentual_item = (concluidas / total * 100) if total > 0 else 0
+            
+            progresso_data.append({
+                "Item": item_num,
+                "Descrição": item_data["descricao"],
+                "Responsável": item_data["responsavel"],
+                "Progresso": f"{concluidas}/{total}",
+                "%": f"{percentual_item:.0f}%"
+            })
+    
+    df_progresso = pd.DataFrame(progresso_data)
+    st.dataframe(df_progresso, use_container_width=True, hide_index=True)
+    
+    # Gráfico de progresso
+    fig = px.bar(
+        df_progresso,
+        x="Item",
+        y=[float(p.strip('%')) for p in df_progresso["%"]],
+        title="Progresso por Item (%)",
+        labels={"y": "Percentual", "x": "Item"}
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-# CHECKLISTS
-elif opcao == "📝 Checklists":
-    st.markdown(f'<p class="sub-header">📝 CHECKLISTS - {meses_pt[mes_selecionado-1]}/{ano_selecionado}</p>', unsafe_allow_html=True)
+# ABA 2: CHECKLISTS
+with tab2:
+    st.markdown(f'<p class="sub-header">✅ CHECKLISTS - {meses_pt[mes_selecionado-1]}/{ano_atual}</p>', unsafe_allow_html=True)
     
     # Seleção de item
-    item = st.selectbox("Selecione o item", df["Item"].tolist(),
-                        format_func=lambda x: f"{x} - {df[df['Item']==x]['Descrição'].iloc[0]}")
+    item_selecionado = st.selectbox(
+        "Selecione o item para preencher",
+        list(itens_planat.keys()),
+        format_func=lambda x: f"{x} - {itens_planat[x]['descricao']} (Resp: {itens_planat[x]['responsavel']})"
+    )
+    
+    if item_selecionado:
+        st.markdown("---")
+        
+        # Card do item
+        with st.container():
+            st.markdown(f'<div class="card">', unsafe_allow_html=True)
+            st.markdown(f"### {item_selecionado}. {itens_planat[item_selecionado]['descricao']}")
+            st.markdown(f"**Responsável:** {itens_planat[item_selecionado]['responsavel']}")
+            
+            # Tarefas
+            st.markdown("#### Tarefas:")
+            
+            tarefas_atualizadas = {}
+            for tarefa in itens_planat[item_selecionado]["tarefas"]:
+                valor_atual = st.session_state.checklists[chave_mes][item_selecionado]["tarefas"].get(tarefa, False)
+                tarefas_atualizadas[tarefa] = st.checkbox(
+                    tarefa,
+                    value=valor_atual,
+                    key=f"{chave_mes}_{item_selecionado}_{tarefa}"
+                )
+            
+            # Observações
+            st.markdown("#### Observações:")
+            observacoes = st.text_area(
+                "Anotações do item",
+                value=st.session_state.checklists[chave_mes][item_selecionado]["observacoes"],
+                key=f"{chave_mes}_{item_selecionado}_obs",
+                height=100
+            )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Botão salvar
+        if st.button(f"💾 Salvar Item {item_selecionado}", type="primary", use_container_width=True):
+            st.session_state.checklists[chave_mes][item_selecionado]["tarefas"] = tarefas_atualizadas
+            st.session_state.checklists[chave_mes][item_selecionado]["observacoes"] = observacoes
+            
+            # Verificar se todas as tarefas estão concluídas
+            todas_concluidas = all(tarefas_atualizadas.values())
+            st.session_state.checklists[chave_mes][item_selecionado]["concluido"] = todas_concluidas
+            
+            st.success(f"Item {item_selecionado} salvo com sucesso!")
+            st.rerun()
+
+# ABA 3: RESUMO DO MÊS
+with tab3:
+    st.markdown(f'<p class="sub-header">📋 RESUMO - {meses_pt[mes_selecionado-1]}/{ano_atual}</p>', unsafe_allow_html=True)
+    
+    total_tarefas, tarefas_concluidas = calcular_progresso(chave_mes)
+    percentual = (tarefas_concluidas / total_tarefas * 100) if total_tarefas > 0 else 0
+    
+    # Cards de resumo
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Itens", len(itens_planat))
+    with col2:
+        itens_concluidos = sum(1 for item in st.session_state.checklists[chave_mes].values() if item["concluido"])
+        st.metric("Itens Concluídos", itens_concluidos)
+    with col3:
+        st.metric("Tarefas", total_tarefas)
+    with col4:
+        st.metric("Feitas", tarefas_concluidas)
     
     st.markdown("---")
     
-    # Checklist por item
-    if item == 1:
-        st.markdown("#### 📋 Atos de Gestão")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.selectbox("Novas determinações TCE/CGE?", ["Não", "Sim"])
-            st.selectbox("Status monitoramento", ["OK", "Atenção", "Crítico", "Andamento"])
-        with col2:
-            st.selectbox("Concurso Público", ["Sem mov.", "Andamento", "Concluído"])
-            st.text_area("Observações")
-    
-    elif item == 3:
-        st.markdown("#### 💰 Gestão Orçamentária")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.selectbox("Receita x Previsão", ["OK", "Atenção", "Crítico"])
-            st.selectbox("Despesa x Fixada", ["OK", "Atenção", "Crítico"])
-        with col2:
-            st.selectbox("Restos a Pagar", ["OK", "Atenção", "Crítico"])
-            st.selectbox("Pagamentos", ["OK", "Atenção", "Crítico"])
-    
-    elif item == 17:
-        st.markdown("#### 🔍 SIAUDI")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.selectbox("Recomendações AGE", ["Registradas", "Pendentes", "Parcial"])
-            st.number_input("Pendentes", 0, 50, 5)
-        with col2:
-            st.selectbox("Evidências", ["Anexadas", "Pendentes", "Parcial"])
-            st.number_input("Concluídas no mês", 0, 50, 2)
-    
-    else:
-        for i in range(1, 6):
-            st.selectbox(f"Campo {i}", ["OK", "Atenção", "Crítico", "N/A"])
-    
-    if st.button("💾 SALVAR", type="primary"):
-        st.success("Checklist salvo com sucesso!")
+    # Lista detalhada por item
+    for item_num, item_data in itens_planat.items():
+        if item_num in st.session_state.checklists[chave_mes]:
+            item_status = st.session_state.checklists[chave_mes][item_num]
+            tarefas_item = item_status["tarefas"]
+            concluidas_item = sum(tarefas_item.values())
+            total_item = len(tarefas_item)
+            
+            with st.expander(f"{item_num}. {item_data['descricao']} - {concluidas_item}/{total_item} concluídas"):
+                for tarefa, concluida in tarefas_item.items():
+                    status = "✅" if concluida else "⬜"
+                    st.markdown(f"{status} {tarefa}")
+                
+                if item_status["observacoes"]:
+                    st.markdown(f"**Observações:** {item_status['observacoes']}")
 
-# VISUALIZAR
-elif opcao == "📊 Visualizar":
-    st.markdown('<p class="sub-header">📊 CHECKLISTS SALVOS</p>', unsafe_allow_html=True)
+# ABA 4: RELATÓRIO
+with tab4:
+    st.markdown(f'<p class="sub-header">📄 RELATÓRIO DO MÊS</p>', unsafe_allow_html=True)
     
-    if st.session_state.checklists_data:
-        st.write("Dados salvos na sessão atual:")
-        st.json(st.session_state.checklists_data)
-    else:
-        st.info("Nenhum checklist salvo nesta sessão.")
-    
-    st.markdown("---")
-    st.markdown("📥 **Exportar dados**")
-    st.markdown(get_csv_download_link(df, "planat_dados.csv"), unsafe_allow_html=True)
+    if st.button("📄 GERAR RELATÓRIO COMPLETO", type="primary", use_container_width=True):
+        relatorio_texto = gerar_relatorio_mes(chave_mes)
+        
+        st.markdown("### 👁️ Visualização do Relatório")
+        st.text_area("Prévia", relatorio_texto, height=400)
+        
+        # Download
+        b64 = base64.b64encode(relatorio_texto.encode()).decode()
+        href = f'<a href="data:file/txt;base64,{b64}" download="relatorio_{meses_pt[mes_selecionado-1]}_{ano_atual}.txt" style="background-color: #003366; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">📥 BAIXAR RELATÓRIO</a>'
+        st.markdown(href, unsafe_allow_html=True)
 
-# RELATÓRIOS
-elif opcao == "📈 Relatórios":
-    st.markdown('<p class="sub-header">📈 INDICADORES</p>', unsafe_allow_html=True)
-    
-    # Gráfico de evolução
-    meses = [m[:3] for m in meses_pt]
-    valores = [10, 12, 15, 14, 16, 18, 17, 19, 20, 22, 23, 25]
-    
-    fig = px.line(x=meses, y=valores, markers=True,
-                  title="Evolução do Monitoramento",
-                  labels={"x": "Mês", "y": "Itens Monitorados"})
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Indicadores
-    indicadores = pd.DataFrame({
-        "Indicador": ["Conformidade Orçamentária", "Conciliações", "Licitações Analisadas",
-                      "Prestações de Contas", "SIAUDI Atualizado"],
-        "Meta": ["100%", "100%", "30%", "100%", "100%"],
-        "Atual": ["95%", "90%", "25%", "100%", "60%"],
-        "Status": ["🟡", "🟡", "🟡", "✅", "🔴"]
-    })
-    st.dataframe(indicadores, use_container_width=True, hide_index=True)
-
-# EXPORTAR
-elif opcao == "📄 Exportar":
-    st.markdown('<p class="sub-header">📄 EXPORTAR RELATÓRIO</p>', unsafe_allow_html=True)
-    
-    st.markdown("### Opções de Exportação")
+# ABA 5: EXPORTAR
+with tab5:
+    st.markdown(f'<p class="sub-header">📤 EXPORTAR DADOS</p>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
+    
     with col1:
-        mes_inicio = st.selectbox("Mês inicial", meses_pt, index=0)
+        if st.button("📥 Exportar Checklist (JSON)", use_container_width=True):
+            dados_export = json.dumps(st.session_state.checklists[chave_mes], indent=2, ensure_ascii=False)
+            b64 = base64.b64encode(dados_export.encode()).decode()
+            href = f'<a href="data:file/json;base64,{b64}" download="checklist_{meses_pt[mes_selecionado-1]}_{ano_atual}.json">📥 Download JSON</a>'
+            st.markdown(href, unsafe_allow_html=True)
+    
     with col2:
-        mes_fim = st.selectbox("Mês final", meses_pt, index=11)
-    
-    formato = st.radio("Formato", ["CSV", "Excel", "JSON"])
-    
-    if st.button("📥 GERAR RELATÓRIO", type="primary"):
-        st.success("Relatório gerado!")
-        
-        if formato == "CSV":
-            st.markdown(get_csv_download_link(df, f"relatorio_planat_{datetime.now().strftime('%Y%m%d')}.csv"),
-                       unsafe_allow_html=True)
-        elif formato == "JSON":
-            json_str = json.dumps(df.to_dict(), indent=2)
-            b64 = base64.b64encode(json_str.encode()).decode()
-            st.markdown(f'<a href="data:file/json;base64,{b64}" download="relatorio.json">📥 Download JSON</a>',
-                       unsafe_allow_html=True)
-        else:
-            st.info("Exportação Excel disponível em breve!")
+        if st.button("📥 Exportar Progresso (CSV)", use_container_width=True):
+            dados_progresso = []
+            for item_num, item_data in itens_planat.items():
+                if item_num in st.session_state.checklists[chave_mes]:
+                    tarefas_item = st.session_state.checklists[chave_mes][item_num]["tarefas"]
+                    concluidas = sum(tarefas_item.values())
+                    total = len(tarefas_item)
+                    
+                    dados_progresso.append({
+                        "Item": item_num,
+                        "Descrição": item_data["descricao"],
+                        "Responsável": item_data["responsavel"],
+                        "Tarefas Concluídas": concluidas,
+                        "Total Tarefas": total,
+                        "Percentual": f"{(concluidas/total*100):.1f}%" if total > 0 else "0%"
+                    })
+            
+            df_export = pd.DataFrame(dados_progresso)
+            csv = df_export.to_csv(index=False)
+            b64 = base64.b64encode(csv.encode()).decode()
+            href = f'<a href="data:file/csv;base64,{b64}" download="progresso_{meses_pt[mes_selecionado-1]}_{ano_atual}.csv">📥 Download CSV</a>'
+            st.markdown(href, unsafe_allow_html=True)
 
 # Rodapé
 st.markdown("---")
-st.markdown("**Auditoria Interna - IPEM/RJ**")
-st.markdown("Milana Aghara Conde Soares Leite | José Francisco Chao Cabanas")
+st.markdown('<p class="footer">Sistema de Monitoramento do PLANAT 2026 - Auditoria Interna do IPEM/RJ</p>', unsafe_allow_html=True)
